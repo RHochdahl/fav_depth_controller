@@ -1,0 +1,13 @@
+<launch>
+    <arg name="est" default="ekf2" />
+    <arg name="vehicle" default="uuv_bluerov2_heavy" />
+
+    <include file="$(find bluerov_sim)/launch/gazebo_base.launch"/>
+
+    <include file="$(find bluerov_sim)/launch/spawn_vehicle.launch">
+        <arg name="z" value="-0.2"/>
+    </include>
+
+    <!-- Add your own nodes here -->
+
+</launch>
