@@ -13,6 +13,8 @@ class MixerNode():
                                             MotorSetpoint,
                                             queue_size=1)
 
+        # self.test_pub = rospy.Publisher("test", Float64, queue_size=1)
+
         self.data_lock = threading.RLock()
 
         self.thruster = self.init_mixing()
@@ -83,7 +85,7 @@ class MixerNode():
         msg.header.stamp = rospy.Time.now()
         with self.data_lock:
             for i in range(8):
-                msg.setpoint[i] = (
+                msg.setpoint[i] = 0.33 * (
                     self.roll * self.thruster[i]["roll"] +
                     self.pitch * self.thruster[i]["pitch"] +
                     self.yaw * self.thruster[i]["yaw"] +
@@ -109,15 +111,15 @@ class MixerNode():
                            vertical_thrust=0.0)
         thruster[2] = dict(roll=0.0,
                            pitch=0.0,
-                           yaw=1.0,
-                           thrust=1.0,
-                           lateral_thrust=-1.0,
+                           yaw=1.0, # -1.0
+                           thrust=1.0, # -1.0
+                           lateral_thrust=-1.0, # 1.0
                            vertical_thrust=0.0)
         thruster[3] = dict(roll=0.0,
                            pitch=0.0,
-                           yaw=-1.0,
-                           thrust=1.0,
-                           lateral_thrust=1.0,
+                           yaw=-1.0, # 1.0
+                           thrust=1.0, # -1.0
+                           lateral_thrust=1.0, # -1.0
                            vertical_thrust=0.0)
         thruster[4] = dict(roll=-1.0,
                            pitch=-1.0,
