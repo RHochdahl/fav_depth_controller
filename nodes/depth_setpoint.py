@@ -42,11 +42,13 @@ class DepthSetpointNode():
     def reset_parameters(self, msg):
         with self.data_lock:
             self.setpoint_trajectory = msg.setpoint_trajectory
-            self.frequency = round(msg.setpoint_frequency, 4)
-            self.period_time = 1.0/self.frequency
-            if self.setpoint_trajectory == 0:
-                self.omega = 2*math.pi*self.frequency
             self.shutdown = msg.shutdown
+            if not self.shutdown:
+                self.frequency = round(msg.setpoint_frequency, 4)
+                self.period_time = 1.0/self.frequency
+                if self.setpoint_trajectory == 0:
+                    self.omega = 2*math.pi*self.frequency
+                self.init_time = rospy.get_time()
 
     def run(self):
         rate = rospy.Rate(50.0)
