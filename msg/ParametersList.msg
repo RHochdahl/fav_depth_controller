@@ -1,0 +1,5 @@
+Header header
+uint8 controller_type
+uint8 setpoint_trajectory
+float32 setpoint_frequency
+bool shutdown

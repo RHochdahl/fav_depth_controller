@@ -6,8 +6,8 @@ from depth_controller.msg import StateVector2D
 
 class StateEstimatorNode():
    def __init__(self):
-      self.pascal_per_meter = 9.78057e3
-      self.surface_pressure = 1.01325e5
+      self.pascal_per_meter = 9.78057e3  # g*rho
+      self.surface_pressure = 1.01325e5  # according to gazebo
 
       self.rho = 2.5
       self.phi = 0.3

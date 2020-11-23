@@ -10,6 +10,7 @@ add_message_files(
   FILES
   StateVector2D.msg
   StateVector3D.msg
+  ParametersList.msg
 )
 
 generate_messages(
