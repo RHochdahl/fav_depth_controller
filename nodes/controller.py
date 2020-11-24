@@ -4,6 +4,7 @@ import threading
 import math
 from mavros_msgs.srv import CommandBool
 from std_msgs.msg import Float64
+from std_msgs.msg import Bool
 from depth_controller.msg import StateVector2D
 from depth_controller.msg import StateVector3D
 from depth_controller.msg import ParametersList
@@ -11,13 +12,13 @@ from depth_controller.msg import ParametersList
 
 class ControllerNode():
     def __init__(self):
-        self.e1 = 0.0
+        self.e1 = None
         self.e2 = 0.0
         
         self.data_lock = threading.RLock()
 
         # 0 = PD-Controller, 1 = SMC
-        self.controller_type = None
+        self.controller_type = 1
 
         # PD-Controller, k_d / k_p ~= 0.6
         self.k_p = 9.0
@@ -46,6 +47,19 @@ class ControllerNode():
         self.deep_depth_limit = -0.8
         self.shallow_depth_limit = -0.1
 
+        # parameters to determine control offset to negate net bouyancy
+        # gazebo net bouyancy =~ 0.04
+        self.min_setup_time = 30.0
+        self.max_setup_time = 60.0
+        self.max_ss_error = 0.01
+        self.k_offset = 1.0
+        self.integ_rate = 0.05
+        self.simulated_offset = 0.0 # abs(...) < 0.67
+        self.controller_offset = 0.0
+        self.integrator_buffer = 0.0
+        self.depth_error_list = []
+        self.offset_list = []
+
         self.arm_vehicle()
 
         rospy.init_node("controller")
@@ -56,19 +70,26 @@ class ControllerNode():
         self.error_pub = rospy.Publisher("control_error",
                                           StateVector2D,
                                           queue_size=1)
-
-        self.setpoint_sub = rospy.Subscriber("depth_setpoint",
-                                            StateVector3D,
-                                            self.get_setpoint,
-                                            queue_size=1)
+        self.controller_ready_pub = rospy.Publisher("controller_ready",
+                                          Bool,
+                                          queue_size=1)
         self.state_sub = rospy.Subscriber("state",
                                           StateVector2D,
                                           self.get_current_state,
                                           queue_size=1)
+
+        self.report_readiness(False)
+        self.determine_offset()
+        self.report_readiness(True)
+
         self.parameters_sub = rospy.Subscriber("parameters",
                                                 ParametersList,
                                                 self.reset_parameters,
                                                 queue_size=1)
+        self.setpoint_sub = rospy.Subscriber("depth_setpoint",
+                                            StateVector3D,
+                                            self.get_setpoint,
+                                            queue_size=1)
 
     def arm_vehicle(self): 
         # wait until the arming serivce becomes available
@@ -81,23 +102,36 @@ class ControllerNode():
             rospy.sleep(1.0)
         rospy.loginfo("Armed successfully.")
 
+    def send_control_message(self, u):
+        msg = Float64()
+        msg.data =u + self.simulated_offset
+        self.vertical_thrust_pub.publish(msg)
+
+    def publish_error(self):
+        err_msg = StateVector2D()
+        err_msg.header.stamp = rospy.Time.now()
+        err_msg.position = self.e1
+        err_msg.velocity = self.e2
+        self.error_pub.publish(err_msg)
+
+    def report_readiness(self, ready_bool):
+        msg = Bool()
+        msg.data = ready_bool
+        self.controller_ready_pub.publish(msg)
+
     def run(self):
         rate = rospy.Rate(50.0)
 
         while not (rospy.is_shutdown() or self.shutdown):
-            msg = Float64()
-            msg.data = self.controller()
-            self.vertical_thrust_pub.publish(msg)
+            u = self.controller()
+            self.send_control_message(u)
 
-            err_msg = StateVector2D()
-            err_msg.header.stamp = rospy.Time.now()
-            err_msg.position = self.e1
-            err_msg.velocity = self.e2
-            self.error_pub.publish(err_msg)
+            self.publish_error()
 
             rate.sleep()
         
         if self.shutdown:
+            self.report_readiness(False)
             self.controller_type = 1
             rospy.loginfo("\nStabilizing Vehicle at final position...")
             while not (rospy.is_shutdown()) and ((abs(self.e1) > 0.1) or (abs(self.e2) > 0.2)):
@@ -167,16 +201,54 @@ class ControllerNode():
 
         elif self.controller_type == 1:
             # SMC
-            self.e1 = self.current_depth - self.desired_depth
-            self.e2 = self.current_velocity - self.desired_velocity
+            self.e1 = self.desired_depth - self.current_depth
+            self.e2 = self.desired_velocity - self.current_velocity
             s = self.e2 + self.Lambda*self.e1
-            u = self.alpha*(self.desired_acceleration-self.Lambda*self.e2-self.kappa*(s/(abs(s)+self.epsilon)))            
+            u = self.alpha*(self.desired_acceleration+self.Lambda*self.e2+self.kappa*(s/(abs(s)+self.epsilon)))
 
         else:
             rospy.logwarn("\nError! Undefined Controller chosen.\n")
             return 0.0
 
-        return self.sat(u)
+        return self.sat(u + self.controller_offset)
+
+    def determine_offset(self):
+        start_time = rospy.get_time()
+        time = start_time
+        rate = rospy.Rate(50.0)
+        rospy.loginfo("Setting up Controller...")
+        mean_error = 1.0
+        while ((mean_error > self.max_ss_error) or ((time-start_time) < self.min_setup_time)) and ((time-start_time) < self.max_setup_time):
+            u_controller = self.controller()
+            if self.e1 is not None:
+                self.integrator_buffer = self.sat(self.integrator_buffer+self.integ_rate*self.e1)
+                self.depth_error_list.append(abs(self.e1))
+                if len(self.depth_error_list) > 100:
+                    del self.depth_error_list[0]
+                sum = 0.0
+                for error_entry in self.depth_error_list:
+                    sum += error_entry
+                mean_error = sum / len(self.depth_error_list)
+                # rospy.loginfo("\ndepth = " + str(self.current_depth) + "\nrunning average of error = " + str(mean_error) + "\nintegrator buffer = " + str(self.integrator_buffer))
+                u = self.sat(u_controller + self.k_offset * self.integrator_buffer)
+                self.send_control_message(u)
+                self.publish_error()
+                self.offset_list.append(self.k_offset*self.integrator_buffer)
+                if len(self.offset_list) > 20:
+                    del self.offset_list[0]
+            else:
+                start_time = rospy.get_time()
+            rate.sleep()
+            time = rospy.get_time()
+        self.controller_offset = self.k_offset * self.integrator_buffer
+        sum = 0.0
+        for offset_entry in self.offset_list:
+            sum += offset_entry
+        mean_offset = sum / len(self.offset_list)
+        rospy.loginfo("\nController setup completed.")
+        rospy.loginfo("\noffset:\t" + str(self.controller_offset))
+        rospy.loginfo("\nmean offset:\t" + str(mean_offset))
+        self.controller_type = None
 
     def sat(self, x):
         return min(max(x, -1), 1)
