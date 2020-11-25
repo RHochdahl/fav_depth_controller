@@ -21,11 +21,11 @@ class ControllerNode():
         self.controller_type = 1
 
         # PD-Controller, k_d / k_p ~= 0.6
-        self.k_p = 9.0
+        self.k_p = 6.0 # 9.0
         self.k_d = 5.5
 
         # SMC
-        self.alpha = 1.5
+        self.alpha = 1.5 # 0.44
         self.Lambda = 1.5
         self.kappa = 2.5
         self.epsilon = 0.4
@@ -38,11 +38,9 @@ class ControllerNode():
 
         self.shutdown = False
 
-        self.no_state_warn_time = 0.0
-        self.no_controller_warn_time = 0.0
-        self.unsafe_setpoint_warn_time = 0.0
-        self.unsafe_setpoint_warn_time = 0.0
-        self.unsafe_depth_warn_time = 0.0
+        self.state_msg_time = 0.0
+
+        self.max_msg_timeout = 0.1
 
         self.deep_depth_limit = -0.8
         self.shallow_depth_limit = -0.1
@@ -52,8 +50,7 @@ class ControllerNode():
         self.min_setup_time = 30.0
         self.max_setup_time = 60.0
         self.max_ss_error = 0.01
-        self.k_offset = 1.0
-        self.integ_rate = 0.05
+        self.k_offset = 0.2 # 1.0
         self.simulated_offset = 0.0 # abs(...) < 0.67
         self.controller_offset = 0.0
         self.integrator_buffer = 0.0
@@ -156,40 +153,30 @@ class ControllerNode():
         with self.data_lock:
             self.current_depth = msg.position
             self.current_velocity = msg.velocity
+            self.state_msg_time = rospy.get_time()
 
     def reset_parameters(self, msg):
         with self.data_lock:
             self.controller_type = msg.controller_type
+            self.shutdown = msg.shutdown
 
     def controller(self):
-        if (self.current_depth is None) or (self.current_velocity is None):
-            time = rospy.get_time()
-            if (time - self.no_state_warn_time) > 1.0:
-                rospy.logwarn("No state information received!")
-                self.no_state_warn_time = time
+        if (rospy.get_time() - self.state_msg_time > self.max_msg_timeout):
+            rospy.logwarn_throttle(1.0, "No state information received!")
             return 0.0
 
         if self.controller_type is None:
-            time = rospy.get_time()
-            if (time - self.no_controller_warn_time) > 1.0:
-                rospy.logwarn("No controller chosen!")
-                self.no_controller_warn_time = time
+            rospy.logwarn_throttle(1.0, "No controller chosen!")
             return 0.0
 
         # return 0.0 if depth or setpoint is 'unsafe'
         if ((self.desired_depth < self.deep_depth_limit) or (self.desired_depth > self.shallow_depth_limit)):
-            time = rospy.get_time()
-            if (time - self.unsafe_setpoint_warn_time) > 1.0:
-                rospy.logwarn("Depth setpoint outside safe region!")
-                self.unsafe_setpoint_warn_time = time
+            rospy.logwarn_throttle(1.0, "Depth setpoint outside safe region!")
             return 0.0
 
         # return 0.0 if depth or setpoint is 'unsafe'
         if ((self.current_depth < self.deep_depth_limit) or (self.current_depth > self.shallow_depth_limit)):
-            time = rospy.get_time()
-            if (time - self.unsafe_depth_warn_time) > 1.0:
-                rospy.logwarn("Diving depth outside safe region!")
-                self.unsafe_depth_warn_time = time
+            rospy.logwarn_throttle(5.0, "Diving depth outside safe region!")
             return 0.0
 
 
@@ -207,13 +194,15 @@ class ControllerNode():
             u = self.alpha*(self.desired_acceleration+self.Lambda*self.e2+self.kappa*(s/(abs(s)+self.epsilon)))
 
         else:
-            rospy.logwarn("\nError! Undefined Controller chosen.\n")
+            rospy.logerr_throttle(10.0, "\nError! Undefined Controller chosen.\n")
             return 0.0
 
         return self.sat(u + self.controller_offset)
 
     def determine_offset(self):
+        self.controller_type = 1
         start_time = rospy.get_time()
+        prev_time = start_time
         time = start_time
         rate = rospy.Rate(50.0)
         rospy.loginfo("Setting up Controller...")
@@ -221,7 +210,7 @@ class ControllerNode():
         while ((mean_error > self.max_ss_error) or ((time-start_time) < self.min_setup_time)) and ((time-start_time) < self.max_setup_time):
             u_controller = self.controller()
             if self.e1 is not None:
-                self.integrator_buffer = self.sat(self.integrator_buffer+self.integ_rate*self.e1)
+                self.integrator_buffer = self.sat(self.integrator_buffer+(time-prev_time)*self.e1)
                 self.depth_error_list.append(abs(self.e1))
                 if len(self.depth_error_list) > 100:
                     del self.depth_error_list[0]
@@ -239,8 +228,9 @@ class ControllerNode():
             else:
                 start_time = rospy.get_time()
             rate.sleep()
+            prev_time = time
             time = rospy.get_time()
-        self.controller_offset = self.k_offset * self.integrator_buffer
+        self.controller_offset += self.k_offset * self.integrator_buffer
         sum = 0.0
         for offset_entry in self.offset_list:
             sum += offset_entry

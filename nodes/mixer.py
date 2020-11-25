@@ -13,8 +13,6 @@ class MixerNode():
                                             MotorSetpoint,
                                             queue_size=1)
 
-        # self.test_pub = rospy.Publisher("test", Float64, queue_size=1)
-
         self.data_lock = threading.RLock()
 
         self.thruster = self.init_mixing()
@@ -25,6 +23,15 @@ class MixerNode():
         self.thrust = 0.0
         self.vertical_thrust = 0.0
         self.lateral_thrust = 0.0
+        
+        self.roll_msg_time = 0.0
+        self.pitch_msg_time = 0.0
+        self.yaw_msg_time = 0.0
+        self.thrust_msg_time = 0.0
+        self.vertical_thrust_msg_time = 0.0
+        self.lateral_thrust_msg_time = 0.0
+
+        self.max_msg_timeout = 0.1
 
         self.roll_sub = rospy.Subscriber("roll",
                                          Float64,
@@ -59,28 +66,56 @@ class MixerNode():
     def on_roll(self, msg):
         with self.data_lock:
             self.roll = msg.data
+            self.roll_msg_time = rospy.get_time()
 
     def on_pitch(self, msg):
         with self.data_lock:
             self.pitch = msg.data
+            self.pitch_msg_time = rospy.get_time()
 
     def on_yaw(self, msg):
         with self.data_lock:
             self.yaw = msg.data
+            self.yaw_msg_time = rospy.get_time()
 
     def on_thrust(self, msg):
         with self.data_lock:
             self.thrust = msg.data
+            self.thrust_msg_time = rospy.get_time()
 
     def on_vertical_thrust(self, msg):
         with self.data_lock:
             self.vertical_thrust = msg.data
+            self.vertical_thrust_msg_time = rospy.get_time()
 
     def on_lateral_thrust(self, msg):
         with self.data_lock:
             self.lateral_thrust = msg.data
+            self.lateral_thrust_msg_time = rospy.get_time()
+
+    def check_msg_times(self):
+        latest_time_allowed = rospy.get_time() - self.max_msg_timeout
+        if self.roll_msg_time < latest_time_allowed:
+            # rospy.logwarn_throttle(1.0, "No roll control received!")
+            self.roll = 0.0
+        if self.pitch_msg_time < latest_time_allowed:
+            # rospy.logwarn_throttle(1.0, "No pitch control received!")
+            self.pitch = 0.0
+        if self.yaw_msg_time < latest_time_allowed:
+            # rospy.logwarn_throttle(1.0, "No yaw control received!")
+            self.yaw = 0.0
+        if self.thrust_msg_time < latest_time_allowed:
+            # rospy.logwarn_throttle(1.0, "No thrust control received!")
+            self.thrust = 0.0
+        if self.vertical_thrust_msg_time < latest_time_allowed:
+            rospy.logwarn_throttle(1.0, "No vertical_thrust control received!")
+            self.vertical_thrust = 0.0
+        if self.lateral_thrust_msg_time < latest_time_allowed:
+            # rospy.logwarn_throttle(1.0, "No lateral_thrust control received!")
+            self.lateral_thrust = 0.0
 
     def mix(self):
+        self.check_msg_times()
         msg = MotorSetpoint()
         msg.header.stamp = rospy.Time.now()
         with self.data_lock:

@@ -58,7 +58,7 @@ class DepthSetpointNode():
             msg = StateVector3D()
             msg.header.stamp = rospy.Time.now()
             # fill msg with example setpoint
-            t = rospy.get_time()
+            t = rospy.get_time() - self.init_time
             if self.setpoint_trajectory == 0:
                 pos, vel, acc = self.sine_wave(t)
                 msg.position = pos
@@ -95,7 +95,7 @@ class DepthSetpointNode():
         return pos, vel, acc
     
     def step_wave(self, t):
-        t_star = (t-self.init_time) % self.period_time
+        t_star = t % self.period_time
         if t_star <= (self.period_time/2):
             pos = self.mean + self.amplitude
         else:
@@ -103,7 +103,7 @@ class DepthSetpointNode():
         return pos
 
     def ramp_wave(self, t):
-        t_star = (t-self.init_time) % self.period_time
+        t_star = t % self.period_time
         if t_star <= (self.period_time/2):
             pos = self.mean + self.amplitude * (1 - 4*self.frequency*t_star)
             vel = -4*self.frequency*self.amplitude
