@@ -1,11 +1,16 @@
 #!/usr/bin/env python
 import rospy
+import threading
 from sensor_msgs.msg import FluidPressure
 from depth_controller.msg import StateVector2D
+from geometry_msgs.msg import AccelWithCovarianceStamped
+from geometry_msgs.msg import TwistStamped
 
 
 class StateEstimatorNode():
    def __init__(self):
+      self.data_lock = threading.RLock()
+
       self.pascal_per_meter = 9.78057e3  # g*rho
       self.surface_pressure = 1.01325e5  # according to gazebo
 
@@ -20,20 +25,40 @@ class StateEstimatorNode():
       rospy.init_node("state_estimator")
       self.state_pub = rospy.Publisher("state", StateVector2D, queue_size=1)
 
+      #self.vel_sub = rospy.Subscriber("mavros/local_position/velocity_body",
+      #                                 TwistStamped,
+      #                                 self.on_velocity,
+      #                                 queue_size=1)
+      self.acc_sub = rospy.Subscriber("mavros/local_position/accel",
+                                       AccelWithCovarianceStamped,
+                                       self.on_acceleration,
+                                       queue_size=1)
+
+   def on_velocity(self, msg):
+      with self.data_lock:
+         meas_vel = msg.twist.linear.z
+         rospy.loginfo_throttle(5.0, "vel = " + str(meas_vel))
+   
+   def on_acceleration(self, msg):
+      with self.data_lock:
+         meas_acc = msg.accel.accel.linear.z
+         rospy.loginfo_throttle(5.0, "acc = " + str(meas_acc))
+      
    def state_estimation_callback(self, pressure_msg):
-      time = pressure_msg.header.stamp.to_sec()
-      depth = - (pressure_msg.fluid_pressure - self.surface_pressure) / self.pascal_per_meter
-      if self.time_prev is None:
-         velocity = 0.0
-      else:
-         del_time = time - self.time_prev
-         velocity = self.calculate_z2hat(depth, del_time)
-      msg = StateVector2D()
-      msg.header.stamp = rospy.Time.now()
-      msg.position = depth
-      msg.velocity = velocity
-      self.state_pub.publish(msg)
-      self.time_prev = time
+      with self.data_lock:
+         time = pressure_msg.header.stamp.to_sec()
+         depth = - (pressure_msg.fluid_pressure - self.surface_pressure) / self.pascal_per_meter
+         if self.time_prev is None:
+            velocity = 0.0
+         else:
+            del_time = time - self.time_prev
+            velocity = self.calculate_z2hat(depth, del_time)
+         msg = StateVector2D()
+         msg.header.stamp = rospy.Time.now()
+         msg.position = depth
+         msg.velocity = velocity
+         self.state_pub.publish(msg)
+         self.time_prev = time
 
    def calculate_z2hat(self, z, del_t):
       z1hat = self.z1hat_prev - del_t*self.rho*self.sat((self.z1hat_prev-z)/self.phi)
