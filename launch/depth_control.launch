@@ -19,6 +19,6 @@
 
     <node name="controller" pkg="depth_controller" type="controller.py" output="screen" />
 
-    <node name="record" pkg="rosbag" type="record" args="-o /home/rene/fav/bagfiles/bag /depth_setpoint /parameters /mavros/setpoint_motor/setpoint /state /vertical_thrust /control_error /clock /rosout"/>
+    <node name="record" pkg="rosbag" type="record" args="-o /home/rene/fav/bagfiles/bag /depth_setpoint /parameters /mavros/setpoint_motor/setpoint /state /vertical_thrust /control_error /pressure /clock /rosout"/>
 
 </launch>

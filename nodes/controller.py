@@ -261,9 +261,10 @@ class ControllerNode():
         for offset_entry in self.offset_list:
             sum += offset_entry
         mean_offset = sum / len(self.offset_list)
-        rospy.loginfo("\nController setup completed.")
-        rospy.loginfo("\noffset:\t" + str(self.controller_offset))
-        rospy.loginfo("\nmean offset:\t" + str(mean_offset))
+        rospy.loginfo("\nController setup completed." + 
+                      "\noffset:\t" + str(self.controller_offset) +    
+                      "\nmean offset:\t" + str(mean_offset) + 
+                      "\nmean error:\t" + str(mean_error))
         self.controller_type = None
 
     def sat(self, x):
