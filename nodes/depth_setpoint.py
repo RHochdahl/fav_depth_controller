@@ -48,6 +48,8 @@ class DepthSetpointNode():
                 self.period_time = 1.0/self.frequency
                 if self.setpoint_trajectory == 0:
                     self.omega = 2*math.pi*self.frequency
+                self.amplitude = msg.setpoint_amplitude
+                self.mean = msg.setpoint_mean
                 self.init_time = rospy.get_time()
 
     def run(self):

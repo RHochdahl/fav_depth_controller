@@ -1,5 +1,12 @@
 #!/usr/bin/env python
+
+PACKAGE = 'depth_controller'
+import roslib;roslib.load_manifest(PACKAGE)
 import rospy
+
+from dynamic_reconfigure.server import Server
+from depth_controller.cfg import DepthControlConfig
+
 import threading
 from sensor_msgs.msg import FluidPressure
 from depth_controller.msg import StateVector2D
@@ -18,7 +25,7 @@ class StateEstimatorNode():
       self.phi = 0.3
       self.tau = 0.1
 
-      self.z1hat_prev = 0.5
+      self.z1hat_prev = -0.5
       self.z2hat_prev = 0.0
       self.time_prev = None
 
@@ -33,6 +40,22 @@ class StateEstimatorNode():
                                        AccelWithCovarianceStamped,
                                        self.on_acceleration,
                                        queue_size=1)
+      
+      self.tune_parameters = True
+      self.server = Server(DepthControlConfig, self.server_callback)
+
+   def server_callback(self, config, level):
+      with self.data_lock:
+         if self.tune_parameters:
+            self.tune_parameters = config.tune_parameters
+            rospy.loginfo("New Parameters received by State Estimator")
+               
+            self.surface_pressure = config.surface_pressure
+
+            self.rho = config.rho
+            self.phi = config.phi
+            self.tau = config.tau
+      return config
 
    def on_velocity(self, msg):
       with self.data_lock:

@@ -1,5 +1,12 @@
 #!/usr/bin/env python
+
+PACKAGE = 'depth_controller'
+import roslib;roslib.load_manifest(PACKAGE)
 import rospy
+
+from dynamic_reconfigure.server import Server
+from depth_controller.cfg import DepthControlConfig
+
 import threading
 import math
 from mavros_msgs.srv import CommandBool
@@ -18,14 +25,14 @@ class ControllerNode():
         self.data_lock = threading.RLock()
 
         # 0 = PD-Controller, 1 = SMC
-        self.controller_type = 1
+        self.controller_type = 0
 
         # PD-Controller, k_d / k_p ~= 0.6
-        self.k_p = 6.0 # 9.0
-        self.k_d = 5.5
+        self.k_p = 9.0
+        self.k_d = 5.8
 
         # SMC
-        self.alpha = 1.5 # 0.44
+        self.alpha = 1.5
         self.Lambda = 1.5
         self.kappa = 2.5
         self.epsilon = 0.4
@@ -50,7 +57,7 @@ class ControllerNode():
         self.min_setup_time = 30.0
         self.max_setup_time = 60.0
         self.max_ss_error = 0.01
-        self.k_offset = 0.2 # 1.0
+        self.k_i = 0.2 # 1.0
         self.simulated_offset = 0.0 # abs(...) < 0.67
         self.controller_offset = 0.0
         self.integrator_buffer = 0.0
@@ -78,6 +85,9 @@ class ControllerNode():
         self.report_readiness(False)
         self.determine_offset()
         self.report_readiness(True)
+
+        self.tune_parameters = True
+        self.server = Server(DepthControlConfig, self.server_callback)
 
         self.parameters_sub = rospy.Subscriber("parameters",
                                                 ParametersList,
@@ -115,6 +125,21 @@ class ControllerNode():
         msg = Bool()
         msg.data = ready_bool
         self.controller_ready_pub.publish(msg)
+
+    def server_callback(self, config, level):
+        with self.data_lock:
+            if self.tune_parameters:
+                self.tune_parameters = config.tune_parameters
+                rospy.loginfo("New Parameters received by Controller")
+
+                self.k_p = config.k_p
+                self.k_d = config.k_d
+
+                self.alpha = config.alpha
+                self.Lambda = config.Lambda
+                self.kappa = config.kappa
+                self.epsilon = config.epsilon
+        return config
 
     def run(self):
         rate = rospy.Rate(50.0)
@@ -179,7 +204,6 @@ class ControllerNode():
             rospy.logwarn_throttle(5.0, "Diving depth outside safe region!")
             return 0.0
 
-
         if self.controller_type == 0:
             # PD-Controller
             self.e1 = self.desired_depth - self.current_depth
@@ -200,7 +224,9 @@ class ControllerNode():
         return self.sat(u + self.controller_offset)
 
     def determine_offset(self):
-        self.controller_type = 1
+        self.integrator_buffer = 0
+        del self.depth_error_list[:]
+        del self.offset_list[:]
         start_time = rospy.get_time()
         prev_time = start_time
         time = start_time
@@ -219,10 +245,10 @@ class ControllerNode():
                     sum += error_entry
                 mean_error = sum / len(self.depth_error_list)
                 # rospy.loginfo("\ndepth = " + str(self.current_depth) + "\nrunning average of error = " + str(mean_error) + "\nintegrator buffer = " + str(self.integrator_buffer))
-                u = self.sat(u_controller + self.k_offset * self.integrator_buffer)
+                u = self.sat(u_controller + self.k_i * self.integrator_buffer)
                 self.send_control_message(u)
                 self.publish_error()
-                self.offset_list.append(self.k_offset*self.integrator_buffer)
+                self.offset_list.append(self.k_i*self.integrator_buffer)
                 if len(self.offset_list) > 20:
                     del self.offset_list[0]
             else:
@@ -230,7 +256,7 @@ class ControllerNode():
             rate.sleep()
             prev_time = time
             time = rospy.get_time()
-        self.controller_offset += self.k_offset * self.integrator_buffer
+        self.controller_offset += self.k_i * self.integrator_buffer
         sum = 0.0
         for offset_entry in self.offset_list:
             sum += offset_entry

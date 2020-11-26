@@ -2,9 +2,20 @@ cmake_minimum_required(VERSION 3.0.2)
 project(depth_controller)
 
 find_package(catkin REQUIRED COMPONENTS
+  dynamic_reconfigure
   message_generation
   std_msgs
 )
+
+generate_dynamic_reconfigure_options(
+  cfg/DepthControl.cfg
+)
+
+# for c code
+# make sure configure headers are built before any node using them
+# add_dependencies(example_node ${PROJECT_NAME}_gencfg)
+# add_dependencies(your_program ${${PROJECT_NAME}_EXPORTED_TARGETS})
+# add_dependencies(your_library ${${PROJECT_NAME}_EXPORTED_TARGETS})
 
 add_message_files(
   FILES
@@ -24,6 +35,7 @@ catkin_package(
 #  CATKIN_DEPENDS other_catkin_pkg
   CATKIN_DEPENDS message_runtime
 #  DEPENDS system_lib
+  CATKIN_DEPENDS dynamic_reconfigure
 )
 
 include_directories(
