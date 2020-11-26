@@ -31,7 +31,7 @@ class MixerNode():
         self.vertical_thrust_msg_time = 0.0
         self.lateral_thrust_msg_time = 0.0
 
-        self.max_msg_timeout = 0.1
+        self.max_msg_timeout = 1.0
 
         self.roll_sub = rospy.Subscriber("roll",
                                          Float64,

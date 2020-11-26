@@ -19,7 +19,7 @@ from depth_controller.msg import ParametersList
 
 class ControllerNode():
     def __init__(self):
-        self.e1 = None
+        self.e1 = 0.0
         self.e2 = 0.0
         
         self.data_lock = threading.RLock()
@@ -55,19 +55,21 @@ class ControllerNode():
         # parameters to determine control offset to negate net bouyancy
         # gazebo net bouyancy =~ 0.04
         self.min_setup_time = 30.0
-        self.max_setup_time = 60.0
+        self.max_setup_time = 120.0
         self.max_ss_error = 0.01
-        self.k_i = 0.2 # 1.0
+        self.k_i = 0.5 # 1.0
         self.simulated_offset = 0.0 # abs(...) < 0.67
         self.controller_offset = 0.0
         self.integrator_buffer = 0.0
         self.depth_error_list = []
         self.offset_list = []
 
-        self.arm_vehicle()
+        # self.arm_vehicle()
 
         rospy.init_node("controller")
         
+        self.time = rospy.get_time()
+
         self.vertical_thrust_pub = rospy.Publisher("vertical_thrust",
                                                     Float64,
                                                     queue_size=1)
@@ -82,8 +84,9 @@ class ControllerNode():
                                           self.get_current_state,
                                           queue_size=1)
 
-        self.report_readiness(False)
-        self.determine_offset()
+        #self.report_readiness(False)
+        #self.determine_offset()
+        rospy.sleep(5.0)
         self.report_readiness(True)
 
         self.tune_parameters = True
@@ -186,6 +189,8 @@ class ControllerNode():
             self.shutdown = msg.shutdown
 
     def controller(self):
+        delta_t = rospy.get_time() - self.time
+        self.time = rospy.get_time()
         if (rospy.get_time() - self.state_msg_time > self.max_msg_timeout):
             rospy.logwarn_throttle(1.0, "No state information received!")
             return 0.0
@@ -208,14 +213,16 @@ class ControllerNode():
             # PD-Controller
             self.e1 = self.desired_depth - self.current_depth
             self.e2 = self.desired_velocity - self.current_velocity
-            u = self.k_p * self.e1 + self.k_d * self.e2
+            self.integrator_buffer = self.sat(self.integrator_buffer+(delta_t)*self.e1)
+            u = self.k_p * self.e1 + self.k_d * self.e2 + self.k_i * self.integrator_buffer
 
         elif self.controller_type == 1:
             # SMC
             self.e1 = self.desired_depth - self.current_depth
             self.e2 = self.desired_velocity - self.current_velocity
             s = self.e2 + self.Lambda*self.e1
-            u = self.alpha*(self.desired_acceleration+self.Lambda*self.e2+self.kappa*(s/(abs(s)+self.epsilon)))
+            self.integrator_buffer = self.sat(self.integrator_buffer+(delta_t)*self.e1)
+            u = self.alpha*(self.desired_acceleration+self.Lambda*self.e2+self.kappa*(s/(abs(s)+self.epsilon))) + self.k_i * self.integrator_buffer
 
         else:
             rospy.logerr_throttle(10.0, "\nError! Undefined Controller chosen.\n")

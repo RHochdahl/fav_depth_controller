@@ -19,7 +19,7 @@ class StateEstimatorNode():
       self.data_lock = threading.RLock()
 
       self.pascal_per_meter = 9.78057e3  # g*rho
-      self.surface_pressure = 1.01325e5  # according to gazebo
+      self.surface_pressure = 1.015e5  # according to gazebo
 
       self.rho = 2.5
       self.phi = 0.3
