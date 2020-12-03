@@ -1,0 +1,47 @@
+!!python/object/new:dynamic_reconfigure.encoding.Config
+dictitems:
+  Lambda: 1.2
+  alpha: 1.5
+  amplitude: 0.2
+  controller_type: 1
+  epsilon: 0.4
+  frequency: 0.05
+  groups: !!python/object/new:dynamic_reconfigure.encoding.Config
+    dictitems:
+      Lambda: 1.2
+      alpha: 1.5
+      amplitude: 0.2
+      controller_type: 1
+      epsilon: 0.4
+      frequency: 0.05
+      groups: !!python/object/new:dynamic_reconfigure.encoding.Config
+        state: []
+      id: 0
+      k_d: 5.8
+      k_p: 9.0
+      kappa: 2.5
+      mean: -0.5
+      name: Default
+      parameters: !!python/object/new:dynamic_reconfigure.encoding.Config
+        state: []
+      parent: 0
+      phi: 0.3
+      rho: 2.5
+      state: true
+      surface_pressure: 101325.0
+      tau: 0.1
+      trajectory: 0
+      tune_parameters: false
+      type: ''
+    state: []
+  k_d: 5.8
+  k_p: 9.0
+  kappa: 2.5
+  mean: -0.5
+  phi: 0.3
+  rho: 2.5
+  surface_pressure: 101325.0
+  tau: 0.1
+  trajectory: 0
+  tune_parameters: false
+state: []
