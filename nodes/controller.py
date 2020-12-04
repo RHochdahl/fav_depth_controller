@@ -82,6 +82,7 @@ class ControllerNode():
                                           self.get_current_state,
                                           queue_size=1)
 
+        rospy.sleep(10.0)
         self.report_readiness(False)
         self.determine_offset()
         self.report_readiness(True)
