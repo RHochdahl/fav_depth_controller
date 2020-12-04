@@ -20,6 +20,7 @@ class StateEstimatorNode():
 
       self.pascal_per_meter = 9.78057e3  # g*rho
       self.surface_pressure = 1.01325e5  # according to gazebo
+      # self.surface_pressure = None
 
       self.rho = 2.5
       self.phi = 0.3
@@ -70,6 +71,8 @@ class StateEstimatorNode():
       
    def state_estimation_callback(self, pressure_msg):
       with self.data_lock:
+         if self.surface_pressure is None:
+            self.surface_pressure = pressure_msg.fluid_pressure
          time = pressure_msg.header.stamp.to_sec()
          depth = - (pressure_msg.fluid_pressure - self.surface_pressure) / self.pascal_per_meter
          if self.time_prev is None:
