@@ -203,25 +203,51 @@ class ControllerNode():
         if ((self.current_depth < self.deep_depth_limit) or (self.current_depth > self.shallow_depth_limit)):
             rospy.logwarn_throttle(5.0, "Diving depth outside safe region!")
             return 0.0
-
+        
+        delta_t = rospy.get_time() - self.time
+        self.time = rospy.get_time()
+        
         if self.controller_type == 0:
             # PD-Controller
             self.e1 = self.desired_depth - self.current_depth
             self.e2 = self.desired_velocity - self.current_velocity
-            u = self.k_p * self.e1 + self.k_d * self.e2
+            u = self.k_p * self.e1 + self.k_d * self.e2 + self.controller_offset
 
         elif self.controller_type == 1:
             # SMC
             self.e1 = self.desired_depth - self.current_depth
             self.e2 = self.desired_velocity - self.current_velocity
             s = self.e2 + self.Lambda*self.e1
-            u = self.alpha*(self.desired_acceleration+self.Lambda*self.e2+self.kappa*(s/(abs(s)+self.epsilon)))
+            u = self.alpha*(self.desired_acceleration+self.Lambda*self.e2+self.kappa*(s/(abs(s)+self.epsilon))) + self.controller_offset
+            
+        elif self.controller_type == 2:
+            # integral-SMC
+            self.e1 = self.desired_depth - self.current_depth
+            self.e2 = self.desired_velocity - self.current_velocity
+            self.integrator_buffer = self.sat(self.integrator_buffer+delta_t*self.sat(self.e1, 0.05))
+            s = self.e2 + 2*self.Lambda*self.e1 + pow(self.Lambda, 2) * self.integrator_buffer
+            u = self.alpha*(self.desired_acceleration+2*self.Lambda*self.e2+pow(self.Lambda, 2)*self.e1+self.kappa*(s/(abs(s)+self.epsilon)))
 
+        elif self.controller_type == 3:
+            # PID-Controller
+            self.e1 = self.desired_depth - self.current_depth
+            self.e2 = self.desired_velocity - self.current_velocity
+            self.integrator_buffer = self.sat(self.integrator_buffer+delta_t*self.sat(self.e1, 0.05))
+            u = self.k_p * self.e1 + self.k_d * self.e2 + self.k_i * self.integrator_buffer
+
+        elif self.controller_type == 4:
+            # SMC with separate i
+            self.e1 = self.desired_depth - self.current_depth
+            self.e2 = self.desired_velocity - self.current_velocity
+            self.integrator_buffer = self.sat(self.integrator_buffer+delta_t*self.sat(self.e1, 0.05))
+            s = self.e2 + self.Lambda*self.e1
+            u = self.alpha*(self.desired_acceleration+self.Lambda*self.e2+self.kappa*(s/(abs(s)+self.epsilon))) + self.k_i * self.integrator_buffer
+            
         else:
             rospy.logerr_throttle(10.0, "\nError! Undefined Controller chosen.\n")
             return 0.0
 
-        return self.sat(u + self.controller_offset)
+        return self.sat(u)
 
     def determine_offset(self):
         self.integrator_buffer = 0
@@ -267,8 +293,8 @@ class ControllerNode():
                       "\nmean error:\t" + str(mean_error))
         self.controller_type = None
 
-    def sat(self, x):
-        return min(max(x, -1), 1)
+    def sat(self, x, limit=1.0):
+        return min(max(x, -limit), limit)
 
 def main():
    node = ControllerNode()
