@@ -25,6 +25,7 @@ class StateEstimatorNode():
       self.phi = 0.3
       self.tau = 0.1
 
+      self.z_prev = -0.5
       self.z1hat_prev = -0.5
       self.z2hat_prev = 0.0
       self.time_prev = None
@@ -84,8 +85,9 @@ class StateEstimatorNode():
          self.time_prev = time
 
    def calculate_z2hat(self, z, del_t):
-      z1hat = self.z1hat_prev - del_t*self.rho*self.sat((self.z1hat_prev-z)/self.phi)
-      z2hat = self.z2hat_prev + (del_t/self.tau) * (-self.z2hat_prev-self.rho*self.sat((z1hat-z)/self.phi))
+      z1hat = self.z1hat_prev + del_t*self.z2hat_prev
+      z2hat = self.z2hat_prev + (del_t/self.tau) * (-self.z2hat_prev-self.rho*self.sat((self.z1hat_prev-self.z_prev)/self.phi))
+      self.z_prev = z
       self.z1hat_prev = z1hat
       self.z2hat_prev = z2hat
       return z2hat
