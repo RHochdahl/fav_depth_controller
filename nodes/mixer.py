@@ -2,6 +2,7 @@
 import rospy
 import threading
 from std_msgs.msg import Float64
+from mavros_msgs.srv import CommandBool
 from mavros_msgs.msg import MotorSetpoint
 
 
@@ -12,6 +13,11 @@ class MixerNode():
         self.setpoint_pub = rospy.Publisher("mavros/setpoint_motor/setpoint",
                                             MotorSetpoint,
                                             queue_size=1)
+
+        self.simulate = rospy.get_param("simulate")
+
+        if self.simulate:
+            self.arm_vehicle()
 
         self.data_lock = threading.RLock()
 
@@ -55,6 +61,17 @@ class MixerNode():
                                                     queue_size=1)
         self.lateral_thrust_sub = rospy.Subscriber("lateral_thrust", Float64,
                                                    self.on_lateral_thrust)
+
+    def arm_vehicle(self): 
+        # wait until the arming serivce becomes available
+        rospy.wait_for_service("mavros/cmd/arming")
+        # connect to the service
+        arm = rospy.ServiceProxy("mavros/cmd/arming", CommandBool)
+        # call the service to arm the vehicle until service call was successfull
+        while not arm(True).success:
+            rospy.logwarn("Could not arm vehicle. Keep trying.")
+            rospy.sleep(1.0)
+        rospy.loginfo("Armed successfully.")
 
     def run(self):
         rate = rospy.Rate(50.0)

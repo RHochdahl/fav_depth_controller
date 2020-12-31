@@ -3,48 +3,91 @@
 PACKAGE = 'depth_controller'
 import roslib;roslib.load_manifest(PACKAGE)
 import rospy
+import numpy as np
 
 from dynamic_reconfigure.server import Server
 from depth_controller.cfg import DepthControlConfig
+
+import tf_conversions as tf
 
 import threading
 from sensor_msgs.msg import FluidPressure
 from depth_controller.msg import StateVector2D
 from geometry_msgs.msg import AccelWithCovarianceStamped
 from geometry_msgs.msg import TwistStamped
+from sensor_msgs.msg import Imu
+from range_sensor.msg import RangeMeasurementArray
 
 
 class StateEstimatorNode():
    def __init__(self):
       self.data_lock = threading.RLock()
 
+      self.simulate = rospy.get_param("simulate")
+
       self.pascal_per_meter = 9.78057e3  # g*rho
-      self.surface_pressure = 1.01325e5  # according to gazebo
-      # self.surface_pressure = None
+      if self.simulate:
+         self.surface_pressure = 1.01325e5  # according to gazebo
+      else:
+         self.surface_pressure = None
 
       self.rho = 2.5
       self.phi = 0.3
       self.tau = 0.1
 
-      self.z_prev = -0.5
-      self.z1hat_prev = -0.5
-      self.z2hat_prev = 0.0
-      self.time_prev = None
+      self.velocity = np.array([0.0, 0.0, 0.0])
+      self.x_prev = np.array([0.0, 0.0, -0.5])
+      self.x1hat_prev = np.array([0.0, 0.0, -0.5])
+      self.x2hat_prev = np.array([0.0, 0.0, 0.0])
+      self.prev_smo_time = None
 
+      self.time_motion = None
+      self.mu = np.matrix([[0.0],
+                           [0.0],
+                           [0.0],
+                           [0.0],
+                           [0.0],
+                           [0.0]])
+      self.mu_prior = self.mu
+      self.sigma = np.diag([0.1, 0.1, 0.1, 0.5, 0.5, 0.5])
+      self.sigma_prior = self.sigma
+      self.R = np.array([[0.0, 0.0],
+                           [0.0, 0.1]])
+      self.Q_press = np.array([[0.01]])
+      self.Q_range = np.array([[0.05]])
+      
+      self.tag_coordinates = [np.array([0.5, 3.35, -0.5]),
+                              np.array([1.1, 3.35, -0.9]),
+                              np.array([0.5, 3.35, -0.5]),
+                              np.array([1.1, 3.35, -0.9])]
+      
       rospy.init_node("state_estimator")
       self.state_pub = rospy.Publisher("state", StateVector2D, queue_size=1)
-
-      #self.vel_sub = rospy.Subscriber("mavros/local_position/velocity_body",
-      #                                 TwistStamped,
-      #                                 self.on_velocity,
-      #                                 queue_size=1)
-      self.acc_sub = rospy.Subscriber("mavros/local_position/accel",
-                                       AccelWithCovarianceStamped,
-                                       self.on_acceleration,
-                                       queue_size=1)
       
+      self.pressure_sub = rospy.Subscriber("pressure", FluidPressure, self.on_pressure, queue_size=1)
+      # self.imu_sub = rospy.Subscriber("mavros/imu/data", Imu, self.on_imu, queue_size=1)
+      # self.range_sub = rospy.Subscriber("ranges", RangeMeasurementArray, self.range, queue_size=1)
+
       self.tune_parameters = True
       self.server = Server(DepthControlConfig, self.server_callback)
+
+   def run(self):
+      rate = rospy.Rate(50.0)
+
+      while not rospy.is_shutdown():
+         if self.prev_smo_time is None:
+            self.prev_smo_time = rospy.get_time()
+         else:
+            self.velocity = smo(self.mu[:2])
+         rate.sleep()
+   
+   def publish_state(self):
+      with self.data_lock:
+         msg = StateVector2D()
+         msg.header.stamp = rospy.Time.now()
+         msg.position = self.mu[2]
+         msg.velocity = self.velocity[2]
+         self.state_pub.publish(msg)
 
    def server_callback(self, config, level):
       with self.data_lock:
@@ -59,41 +102,81 @@ class StateEstimatorNode():
             self.tau = config.tau
       return config
 
-   def on_velocity(self, msg):
+   def on_range(self, msg):
       with self.data_lock:
-         meas_vel = msg.twist.linear.z
-         rospy.loginfo_throttle(5.0, "vel = " + str(meas_vel))
-   
-   def on_acceleration(self, msg):
+         for meas in msg.measurements:
+            self.sigma_prior = self.sigma
+            self.mu_prior = self.mu
+            h = np.sqrt(np.sqare(self.mu_prior[0]-self.tag_coordinates[meas.id][0])+
+                        np.sqare(self.mu_prior[1]-self.self.tag_coordinates[meas.id][1])+
+                        np.sqare(self.mu_prior[2]-self.tag_coordinates[meas.id][2]))
+            H = (1/h) * np.matrix([[self.mu_prior[0]-self.tag_coordinates[meas.id][0],
+                                    self.mu_prior[1]-self.tag_coordinates[meas.id][1],
+                                    self.mu_prior[2]-self.tag_coordinates[meas.id][2],
+                                    0,
+                                    0,
+                                    0]])
+            K = H*self.sigma_prior*np.linalg.inv(H*self.sigma_prior*H.T + self.Q)
+            self.mu = self.mu_prior + K*(h-H*self.mu_prior)
+            self.sigma = (np.eye(6) - K) * self.sigma_prior
+
+   def on_imu(self, msg):
       with self.data_lock:
-         meas_acc = msg.accel.accel.linear.z
-         rospy.loginfo_throttle(5.0, "acc = " + str(meas_acc))
-      
-   def state_estimation_callback(self, pressure_msg):
+         euler = tf.transformations.euler_from_quaternion(msg.orientation)
+         self.roll = euler[0]
+         self.pitch = euler[1]
+         self.yaw = euler[2]
+         if self.time_motion is None:
+            self.time_motion = msg.header.stamp.to_sec()
+         else:
+            del_t = msg.header.stamp.to_sec() - self.time_motion
+            self.time_motion = msg.header.stamp.to_sec()
+            self.mu = self.mu_prior + del_t*np.matrix([[self.mu_prior[0, 4]],
+                                                      [self.mu_prior[0, 5]],
+                                                      [self.mu_prior[0, 6]],
+                                                      [msg.linear_acceleration.x],
+                                                      [msg.linear_acceleration.y],
+                                                      [msg.linear_acceleration.z]])
+            G = np.matrix([[1, 0, 0, del_t, 0, 0],
+                           [0, 1, 0, 0, del_t, 0],
+                           [0, 0, 1, 0, 0, del_t],
+                           [0, 0, 0, 1, 0, 0],
+                           [0, 0, 0, 0, 1, 0],
+                           [0, 0, 0, 0, 0, 1]])
+            self.sigma = G*self.sigma*G.T+self.R
+
+   def on_pressure(self, pressure_msg):
       with self.data_lock:
          if self.surface_pressure is None:
             self.surface_pressure = pressure_msg.fluid_pressure
          time = pressure_msg.header.stamp.to_sec()
          depth = - (pressure_msg.fluid_pressure - self.surface_pressure) / self.pascal_per_meter
-         if self.time_prev is None:
-            velocity = 0.0
-         else:
-            del_time = time - self.time_prev
-            velocity = self.calculate_z2hat(depth, del_time)
-         msg = StateVector2D()
-         msg.header.stamp = rospy.Time.now()
-         msg.position = depth
-         msg.velocity = velocity
-         self.state_pub.publish(msg)
-         self.time_prev = time
+         self.mu[2] = depth
+         self.velocity[2] = self.smo(depth)
+         self.publish_state()
+         '''
+         H = np.matrix([[0, 0, 1, 0, 0, 0]])
+         self.sigma_prior = self.sigma
+         self.mu_prior = self.mu
+         K = H*self.sigma_prior*np.linalg.inv(H*self.sigma_prior*H.T + self.Q)
+         self.mu = self.mu_prior + K*(np.matrix([[depth]])-H*self.mu_prior)
+         self.sigma = (np.eye(6) - K) * self.sigma_prior
+         '''
 
-   def calculate_z2hat(self, z, del_t):
-      z1hat = self.z1hat_prev + del_t*self.z2hat_prev
-      z2hat = self.z2hat_prev + (del_t/self.tau) * (-self.z2hat_prev-self.rho*self.sat((self.z1hat_prev-self.z_prev)/self.phi))
-      self.z_prev = z
-      self.z1hat_prev = z1hat
-      self.z2hat_prev = z2hat
-      return z2hat
+   def smo(self, x):
+      time = rospy.get_time()
+      if self.prev_smo_time is None:
+         self.prev_smo_time = time
+         return 0
+      del_t = time - self.prev_smo_time
+      self.prev_smo_time = time
+      i=2
+      x1hat = self.x1hat_prev[i] + del_t*self.x2hat_prev[i]
+      x2hat = self.x2hat_prev[i] + (del_t/self.tau) * (-self.x2hat_prev[i]-self.rho*self.sat((self.x1hat_prev[i]-self.x_prev[i])/self.phi))
+      self.x_prev[i] = x # [i]
+      self.x1hat_prev[i] = x1hat
+      self.x2hat_prev[i] = x2hat
+      return x2hat
 
    def sat(self, x):
       return min(1.0, max(-1.0, x))
@@ -101,8 +184,7 @@ class StateEstimatorNode():
 
 def main():
    node = StateEstimatorNode()
-   pressure_sub = rospy.Subscriber("pressure", FluidPressure,
-                                    node.state_estimation_callback)
+   # node.run()
    rospy.spin()
 
 

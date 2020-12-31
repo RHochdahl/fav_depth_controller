@@ -23,11 +23,11 @@ class ParametersNode():
         self.experiment_time = 60.0
 
         # 0 = PD-Controller, 1 = SMC
-        self.controller_types = [0, 1]
+        self.controller_types = [2, 3]
         # 0 = sine wave, 1 = step wave, 2 = ramp wave, else = self.mean
         self.setpoint_frequencies = [[0.1, 0.15], [0.1], [0.15]]  # <= 0.15
 
-        self.controller_names = ["PD-Controller", "Sliding Mode Controller"]
+        self.controller_names = ["PD-Controller", "Sliding Mode Controller", "integral-SMC", "PID-Controller", "SMC with separate i"]
         self.trajectory_names = ["Sine Wave", "Step Wave", "Ramp Wave"]
 
         rospy.init_node("experiment_parameters")
@@ -69,9 +69,9 @@ class ParametersNode():
         while not self.controller_ready:
             rospy.sleep(1.0)
         
-        while (self.tune_parameters) and (not rospy.is_shutdown()):
-            rospy.loginfo_throttle(30.0, "\nTuning Parameters...")
-            rospy.sleep(1.0)
+        #while (self.tune_parameters) and (not rospy.is_shutdown()):
+        #    rospy.loginfo_throttle(30.0, "\nTuning Parameters...")
+        #    rospy.sleep(1.0)
 
         experiment_count = 1
         num_experiments = len(self.controller_types)*sum([len(freq_list) for freq_list in self.setpoint_frequencies])
@@ -114,6 +114,8 @@ class ParametersNode():
         msg.controller_type = controller_type
         msg.setpoint_trajectory = 7
         msg.setpoint_frequency = 1.0
+        msg.setpoint_mean = -0.5
+        msg.setpoint_amplitude = 0.0
         msg.shutdown = False
         self.parameters_pub.publish(msg)
         rospy.sleep(10.0)
