@@ -1,0 +1,4 @@
+time,.header.seq,.header.stamp.secs,.header.stamp.nsecs,.header.frame_id,.controller_type,.setpoint_trajectory,.setpoint_frequency,.setpoint_mean,.setpoint_amplitude,.shutdown
+1970/01/01/01:01:01.445000,1,61,445000000,,1,7,1.0,-0.5,0.0,False
+1970/01/01/01:01:11.446000,2,71,445000000,,1,1,0.0500000007451,-0.5,0.20000000298,False
+1970/01/01/01:02:12.451000,3,132,449000000,,1,1,0.10000000149,-0.5,0.0,True

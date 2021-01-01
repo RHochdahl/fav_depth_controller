@@ -58,8 +58,8 @@ class ControllerNode():
         self.min_setup_time = 30.0
         self.max_setup_time = 60.0
         self.max_ss_error = 0.005
-        self.k_i = 0.2 # 1.0
-        self.simulated_offset = 0.0 # abs(...) < 0.67
+        self.k_i = 0.2  # 1.0
+        self.simulated_offset = 0.0  # abs(...) < 0.67
         self.controller_offset = 0.0
         self.integrator_buffer = 0.0
         self.depth_error_list = []
@@ -83,9 +83,9 @@ class ControllerNode():
 
         self.time = rospy.get_time()
 
-        rospy.sleep(5.0)
-        # self.report_readiness(False)
-        # self.determine_offset()
+        # rospy.sleep(5.0)
+        self.report_readiness(False)
+        self.determine_offset()
         self.report_readiness(True)
 
         self.tune_parameters = True

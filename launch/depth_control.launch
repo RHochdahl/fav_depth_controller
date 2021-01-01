@@ -1,6 +1,6 @@
 <launch>
 
-    <arg name="simulate" default="false"/>
+    <arg name="simulate" default="true"/>
     <arg name="record" default="true"/>
 
     <build_depend>message_generation</build_depend>
@@ -27,7 +27,7 @@
     <node name="zController" pkg="depth_controller" type="zController.py" output="screen" />
 
     <group if="$(arg record)">
-        <node name="record" pkg="rosbag" type="record" args="-o ~/fav/bagfiles/bag /depth_setpoint /parameters /mavros/setpoint_motor/setpoint /state /vertical_thrust /control_error /pressure /rosout"/>
+        <node name="record" pkg="rosbag" type="record" args="-o $(find depth_controller)/bags/bag /depth_setpoint /ground_truth/state /parameters /mavros/setpoint_motor/setpoint /state /vertical_thrust /control_error /pressure /rosout"/>
     </group>
 
 </launch>
