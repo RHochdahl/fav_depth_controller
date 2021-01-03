@@ -23,9 +23,9 @@ class ParametersNode():
         self.experiment_time = 60.0
 
         # 0 = PD-Controller, 1 = SMC
-        self.controller_types = [1]
+        self.controller_types = [4]
         # 0 = sine wave, 1 = step wave, 2 = ramp wave, else = self.mean
-        self.setpoint_frequencies = [[], [0.05], []]  # <= 0.15
+        self.setpoint_frequencies = [[0.05], [], []]  # <= 0.15
 
         self.controller_names = ["PD-Controller", "Sliding Mode Controller", "integral-SMC", "PID-Controller", "SMC with separate i"]
         self.trajectory_names = ["Sine Wave", "Step Wave", "Ramp Wave"]
