@@ -114,7 +114,7 @@ class ParametersNode():
         msg.controller_type = controller_type
         msg.setpoint_trajectory = 7
         msg.setpoint_frequency = 1.0
-        msg.setpoint_mean = -0.5
+        msg.setpoint_mean = -0.65
         msg.setpoint_amplitude = 0.0
         msg.shutdown = False
         self.parameters_pub.publish(msg)
