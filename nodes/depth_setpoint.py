@@ -2,8 +2,8 @@
 import rospy
 import threading
 import math
-from depth_controller.msg import StateVector3D
-from depth_controller.msg import ParametersList
+from fav_depth_controller.msg import StateVector3D
+from fav_depth_controller.msg import ParametersList
 
 
 class DepthSetpointNode():

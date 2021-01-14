@@ -1,19 +1,19 @@
 #!/usr/bin/env python
 
-PACKAGE = 'depth_controller'
+PACKAGE = 'fav_depth_controller'
 import roslib;roslib.load_manifest(PACKAGE)
 import rospy
 
 from dynamic_reconfigure.server import Server
-from depth_controller.cfg import DepthControlConfig
+from fav_depth_controller.cfg import DepthControlConfig
 
 import threading
 import math
 from std_msgs.msg import Float64
 from std_msgs.msg import Bool
-from depth_controller.msg import StateVector2D
-from depth_controller.msg import StateVector3D
-from depth_controller.msg import ParametersList
+from fav_depth_controller.msg import StateVector2D
+from fav_depth_controller.msg import StateVector3D
+from fav_depth_controller.msg import ParametersList
 
 
 class ControllerNode():

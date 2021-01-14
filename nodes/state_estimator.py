@@ -1,18 +1,18 @@
 #!/usr/bin/env python
 
-PACKAGE = 'depth_controller'
+PACKAGE = 'fav_depth_controller'
 import roslib;roslib.load_manifest(PACKAGE)
 import rospy
 import numpy as np
 
 from dynamic_reconfigure.server import Server
-from depth_controller.cfg import DepthControlConfig
+from fav_depth_controller.cfg import DepthControlConfig
 
 import tf_conversions as tf
 
 import threading
 from sensor_msgs.msg import FluidPressure
-from depth_controller.msg import StateVector2D
+from fav_depth_controller.msg import StateVector2D
 from geometry_msgs.msg import AccelWithCovarianceStamped
 from geometry_msgs.msg import TwistStamped
 from sensor_msgs.msg import Imu

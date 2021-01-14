@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(depth_controller)
+project(fav_depth_controller)
 
 find_package(catkin REQUIRED COMPONENTS
   dynamic_reconfigure
